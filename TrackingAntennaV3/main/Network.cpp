@@ -28,10 +28,14 @@ static byte mac[] = {MAC_ADDR_1,MAC_ADDR_2,MAC_ADDR_3,MAC_ADDR_4,MAC_ADDR_5,MAC_
 
 static IPAddress data_relay_ip(DATA_RELAY_IP1, DATA_RELAY_IP2, DATA_RELAY_IP3, DATA_RELAY_IP4);
 
+//non-static data relay 
+IPAddress dataRelayIP;
+
 static void printConnectionStatusMessage(int status);
 static bool allHeadersReceived(void);
 static void connectDataRelay(void);
 static void parseHeaders(void);
+//static void connectMultiEcho(void);
 
 void initNetwork(void){
     int connection_status = 0;
@@ -52,6 +56,7 @@ void initNetwork(void){
     //Give the Ethernet shield a second to initialize:
     delay(1000);
     connectDataRelay();
+    //connectMultiEcho();
     parseHeaders();
 
 }
@@ -136,7 +141,7 @@ static void parseHeaders(void){
 
             if(strcmp(data_buffer, ALTITUDE_HEADER_NAME) == 0){ //if the header we just parsed was for altitude
                 alt_index = lines_read;
-            } else if(strcmp(data_buffer, LATITUDE_HEADER_NAME) == 0){ //if the header we just parsed was for latittude
+            } else if(strcmp(data_buffer, LATITUDE_HEADER_NAME) == 0){ //if the header we just parsed was for latitude
                 lat_index = lines_read;
             } else if(strcmp(data_buffer, LONGITUDE_HEADER_NAME) == 0){ //if the header we just parsed was for longitude
                 lon_index = lines_read;
@@ -150,9 +155,12 @@ static void parseHeaders(void){
 
             debug("Headers finished parsing.");
 
-            //stop execution if we werent able to parse all the headers, since any incoming data will be useless
+            //stop execution if we weren't able to parse all the headers, since any incoming data will be useless
             if(!allHeadersReceived()){
-                while(1);
+              client.stop();
+              //reopen connection
+              connectDataRelay();
+              parseHeaders();
             }
             return;
         } else {
@@ -167,12 +175,45 @@ static void parseHeaders(void){
  * Will continually attempt to do so if unsuccessful
  */
 static void connectDataRelay(void){
+    //create EthernetUDP instance
+    unsigned int myfriggingport = 1111;
+    EthernetUDP Udp;
+    Udp.begin(myfriggingport);
+
+    delay(10);
+
+    info("Sending UDP broadcast...");
+
+    IPAddress broadcastIP = (192, 168, 0, 255);
+    if(Udp.beginPacket(broadcastIP, DATA_RELAY_PORT)) {
+      Serial.println("it worked");
+    } else {
+      Serial.println("it didn't work :(");
+    }
+    Serial.println(Udp.write("hi"));
+    Serial.print("wrote ");
+    Serial.print(Ethernet.localIP());
+    Serial.print(":");
+    Serial.println(DATA_RELAY_PORT);
+    Udp.endPacket();
+
+    delay(1000);
+    //wait until the data relay responds to UDP broadcast
+    Serial.print("parsePacket: ");
+    while(!Udp.parsePacket()){
+      Serial.println(Udp.parsePacket());
+      delay(1000);
+    }
+    //set the data relay IP
+    dataRelayIP = Udp.remoteIP();
+    
     int connection_status = 0;
+    unsigned int port = 49291;
 
     //try to connect to data relay, and keep trying if not successful
     while(connection_status != 1){
         info("Attempting to connect to data relay server...");
-        connection_status = client.connect(data_relay_ip, DATA_RELAY_PORT);
+        connection_status = client.connect(data_relay_ip, port);
         printConnectionStatusMessage(connection_status);
 
         //wait a second before trying to connect again
@@ -212,7 +253,7 @@ static bool allHeadersReceived(void){
 static void printConnectionStatusMessage(int status){
     // if you get a connection, report back via serial:
     if (status == 1) {
-        info("Sucessfully connected to Data Relay");
+        info("Successfully connected to Data Relay");
     }
     else {  // if you didn't get a connection to the server:
         error("Connection Failed! Reason:");
@@ -232,3 +273,49 @@ static void printConnectionStatusMessage(int status){
         }
     }
 }
+
+/**
+ * Broadcast to multiecho port
+ * Wait for response for TCP handshake
+ */
+ /*
+static void connectMultiEcho(void){
+    int packetSize = 0;
+
+    //create EthernetUDP instance
+    EthernetUDP Udp;
+    Udp.begin(MULTI_ECHO_PORT);
+
+    delay(10);
+
+    info("Sending UDP broadcast...");
+    
+    Udp.beginPacket(0, MULTI_ECHO_PORT);
+    Udp.write(Ethernet.localIP()+":"+MULTI_ECHO_PORT);
+    Udp.endPacket();
+
+    delay(10);
+    //wait until multi echo responds
+    do {
+      packetSize = Udp.parsePacket(); 
+      delay(100);   
+    } while (!packetSize);
+    //set the data relay IP
+    dataRelayIP = Udp.remoteIP();
+
+    //form TCP connection
+    int connection_status = 0;
+
+    //try to connect to multiecho, and keep trying if not successful
+    while(connection_status != 1){
+        info("Attempting to connect to multiecho...");
+        connection_status = client.connect(dataRelayIP, DATA_RELAY_PORT);
+        printConnectionStatusMessage(connection_status);
+
+        //wait a second before trying to connect again
+        if(connection_status != 1){
+            delay(1000);
+        }
+    }
+}
+*/

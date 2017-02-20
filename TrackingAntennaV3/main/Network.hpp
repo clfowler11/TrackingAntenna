@@ -14,6 +14,7 @@
  *IP adress of the data relay station and port
  */
 #define DATA_RELAY_PORT 1234
+#define MULTI_ECHO_PORT 4321
 
 #define DATA_RELAY_IP1 192
 #define DATA_RELAY_IP2 168
